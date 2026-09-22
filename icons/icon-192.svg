@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="42" fill="#7a4f77"/>
+  <circle cx="96" cy="96" r="58" fill="#f3e8ef"/>
+  <path d="M64 109c19 8 45 8 64 0-5 21-20 34-32 34s-27-13-32-34Z" fill="#a66b91"/>
+  <path d="M58 83c16-23 28-34 38-34 11 0 24 12 38 34-16-10-27-13-38-13-10 0-22 3-38 13Z" fill="#d8b7c7"/>
+  <text x="96" y="111" text-anchor="middle" font-family="Arial" font-size="43" font-weight="700" fill="#7a4f77">Y</text>
+</svg>
