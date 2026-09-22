@@ -11,7 +11,7 @@
   const uid = () => crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random());
 
   const DEFAULT = {
-    settings:{adminPin:'9186', pinSchema:2, reminderDays:1, driveConnected:false, lastBackup:null, recoveryEmail:'', recoveryKeyHash:''},
+    settings:{adminPin:'9186', pinSchema:2, reminderDays:1, driveConnected:false, driveEndpoint:'', driveBackupKey:'', driveAutoBackup:true, driveBackupPending:false, driveDailyBackup:true, driveDailyTime:'23:59', driveDailyPending:false, driveDailyPendingDate:'', driveLastDailyDate:'', driveLastBackupAt:null, driveLastStatus:'not_configured', driveLastError:'', lastBackup:null, recoveryEmail:'', recoveryKeyHash:''},
     services:[
       {id:'s1',name:'Drenagem Linfática',price:100,duration:60},
       {id:'s2',name:'Massagem Relaxante',price:110,duration:60},
@@ -38,7 +38,13 @@
     return out;
   }
   async function load(){try{const db=await dbOpen();const data=await new Promise((res,rej)=>{const tx=db.transaction(STORE,'readonly');const r=tx.objectStore(STORE).get(KEY);r.onsuccess=()=>res(r.result||structuredClone(DEFAULT));r.onerror=()=>rej(r.error)});return normalizeState(data)}catch{const raw=localStorage.getItem(KEY);return normalizeState(raw?JSON.parse(raw):structuredClone(DEFAULT))}}
-  async function save(){state.logs=state.logs.slice(-500);try{const db=await dbOpen();await new Promise((res,rej)=>{const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put(state,KEY);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}catch{localStorage.setItem(KEY,JSON.stringify(state))}updateBadge()}
+  async function writeLocalState(){state.logs=state.logs.slice(-500);try{const db=await dbOpen();await new Promise((res,rej)=>{const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put(state,KEY);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}catch{localStorage.setItem(KEY,JSON.stringify(state))}updateBadge()}
+  async function save(options={}){
+    const queueDrive=!options.skipAutoBackup && currentMode!=='learn' && isDriveConfigured() && state.settings.driveAutoBackup;
+    if(queueDrive)state.settings.driveBackupPending=true;
+    await writeLocalState();
+    if(queueDrive)scheduleDriveBackup();
+  }
   function log(action, details, actor=currentMode==='admin'?'Administração':currentMode==='learn'?'Treino (fictício)':'Yolanda'){const target=currentMode==='learn'&&trainingState?trainingState:state;target.logs.push({id:uid(),at:new Date().toISOString(),actor,action,details})}
 
   const normalizeEmail=v=>String(v||'').trim().toLowerCase();
@@ -49,6 +55,9 @@
 
   let state, currentMode=null, trainingState=null, learnVisited=new Set();
   let agendaViewMode='month', agendaSelectedDate=today(), agendaCursor=`${today().slice(0,7)}-01`;
+  let driveBackupTimer=null, driveDailyTimer=null, driveBackupInProgress=false;
+  const DRIVE_BACKUP_DELAY=12000;
+  const DAILY_BACKUP_HOUR=23, DAILY_BACKUP_MINUTE=59;
 
   function buildTrainingState(){
     const base=structuredClone(DEFAULT);
@@ -73,10 +82,20 @@
 
   function updateBadge(){
     if(currentMode==='learn'){badge.textContent='● Treino • dados fictícios';badge.className='sync-badge learn';return}
-    if(!navigator.onLine){badge.textContent='● Sem internet';badge.className='sync-badge warn';return}
-    badge.textContent=state?.settings?.driveConnected?'● Online • backup preparado':'● Online • local';badge.className='sync-badge ok';
+    const s=state?.settings||{};
+    if(!navigator.onLine){badge.textContent=s.driveBackupPending?'● Sem internet • backup pendente':'● Sem internet';badge.className='sync-badge warn';return}
+    if(isDriveConfigured()){
+      if(driveBackupInProgress){badge.textContent='● Drive • enviando backup';badge.className='sync-badge warn';return}
+      if(s.driveBackupPending){badge.textContent='● Drive • backup pendente';badge.className='sync-badge warn';return}
+      if(s.driveLastStatus==='error'){badge.textContent='● Drive • verificar backup';badge.className='sync-badge warn';return}
+      badge.textContent='● Drive • backup automático';badge.className='sync-badge ok';return
+    }
+    badge.textContent='● Online • local';badge.className='sync-badge ok';
   }
-  addEventListener('online',updateBadge);addEventListener('offline',updateBadge);
+  addEventListener('online',()=>{updateBadge();if(state?.settings?.driveBackupPending)scheduleDriveBackup(900);scheduleDailyClosingBackup()});
+  addEventListener('offline',updateBadge);
+  addEventListener('focus',()=>scheduleDailyClosingBackup());
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleDailyClosingBackup()});
 
   function setMode(mode){
     currentMode=mode;
@@ -266,15 +285,190 @@
     document.querySelectorAll('[data-remind-confirm]').forEach(b=>b.onclick=async()=>{const a=d.appointments.find(x=>x.id===b.dataset.remindConfirm);a.confirmed=true;log('Confirmação registrada',`${a.serviceName} • ${fmtDate(a.date)}`);await persistCurrent();renderReminders()});bindLearnGuide();
   }
 
-  function renderAdmin(){const month=today().slice(0,7);const monthA=state.appointments.filter(a=>a.date.startsWith(month)&&a.status!=='cancelado');const revenue=monthA.filter(a=>a.paymentStatus==='pago').reduce((s,a)=>s+Number(a.price||0),0);view.innerHTML=`<section class="hero"><h1>Administração</h1><p>Configurações, acompanhamento e backups.</p></section><div class="grid"><div class="card"><div class="muted">Clientes</div><div class="kpi">${state.clients.length}</div></div><div class="card"><div class="muted">Recebido no mês</div><div class="kpi">${money(revenue)}</div></div></div><div class="admin-grid" style="margin-top:14px"><button class="admin-tile" id="admServices"><strong>🧴 Serviços e preços</strong><span class="muted">Alterar preços padrão e cadastrar serviços.</span></button><button class="admin-tile" id="admLogs"><strong>📜 Histórico</strong><span class="muted">Ver alterações feitas no sistema.</span></button><button class="admin-tile" id="admBackup"><strong>💾 Backup</strong><span class="muted">Exportar, importar e preparar Google Drive.</span></button><button class="admin-tile" id="admSettings"><strong>🔐 Configurações</strong><span class="muted">PIN e antecedência dos lembretes.</span></button></div><div class="actions" style="margin-top:16px"><button class="btn ghost" id="adminExit">Sair da Administração</button></div>`;$('#admServices').onclick=renderServices;$('#admLogs').onclick=renderLogs;$('#admBackup').onclick=renderBackup;$('#admSettings').onclick=renderSettings;$('#adminExit').onclick=renderModePicker}
+  function renderAdmin(){const month=today().slice(0,7);const monthA=state.appointments.filter(a=>a.date.startsWith(month)&&a.status!=='cancelado');const revenue=monthA.filter(a=>a.paymentStatus==='pago').reduce((s,a)=>s+Number(a.price||0),0);view.innerHTML=`<section class="hero"><h1>Administração</h1><p>Configurações, acompanhamento e backups.</p></section><div class="grid"><div class="card"><div class="muted">Clientes</div><div class="kpi">${state.clients.length}</div></div><div class="card"><div class="muted">Recebido no mês</div><div class="kpi">${money(revenue)}</div></div></div><div class="admin-grid" style="margin-top:14px"><button class="admin-tile" id="admServices"><strong>🧴 Serviços e preços</strong><span class="muted">Alterar preços padrão e cadastrar serviços.</span></button><button class="admin-tile" id="admLogs"><strong>📜 Histórico</strong><span class="muted">Ver alterações feitas no sistema.</span></button><button class="admin-tile" id="admBackup"><strong>💾 Backup</strong><span class="muted">Backup automático no Google Drive e backup local.</span></button><button class="admin-tile" id="admSettings"><strong>🔐 Configurações</strong><span class="muted">PIN e antecedência dos lembretes.</span></button></div><div class="actions" style="margin-top:16px"><button class="btn ghost" id="adminExit">Sair da Administração</button></div>`;$('#admServices').onclick=renderServices;$('#admLogs').onclick=renderLogs;$('#admBackup').onclick=renderBackup;$('#admSettings').onclick=renderSettings;$('#adminExit').onclick=renderModePicker}
 
   function renderServices(){view.innerHTML=`<div class="section-title"><h2>Serviços e preços padrão</h2><button class="btn primary" id="addService">+ Serviço</button></div><div class="list">${state.services.map(s=>`<div class="item"><div class="item-row"><div><h3>${esc(s.name)}</h3><p>${money(s.price)} • ${s.duration} min</p></div><button class="btn ghost" data-service="${s.id}">Editar</button></div></div>`).join('')}</div><div class="actions" style="margin-top:14px"><button class="btn ghost" id="backAdmin">← Administração</button></div>`;$('#addService').onclick=()=>serviceModal();$('#backAdmin').onclick=renderAdmin;document.querySelectorAll('[data-service]').forEach(b=>b.onclick=()=>serviceModal(state.services.find(s=>s.id===b.dataset.service)))}
   function serviceModal(s=null){modal.innerHTML=`<form class="modal-body" id="serviceForm"><h3>${s?'Editar serviço':'Novo serviço'}</h3><div class="field"><label>Nome</label><input id="sName" required value="${attr(s?.name||'')}"></div><div class="field"><label>Preço padrão</label><input id="sPrice" type="number" min="0" step="0.01" required value="${s?.price??''}"></div><div class="field"><label>Duração (minutos)</label><input id="sDuration" type="number" min="5" step="5" required value="${s?.duration??60}"></div><div class="actions"><button class="btn ghost" type="button" id="closeService">Cancelar</button><button class="btn primary">Salvar</button></div></form>`;modal.showModal();$('#closeService').onclick=()=>modal.close();$('#serviceForm').onsubmit=async e=>{e.preventDefault();const obj=s||{id:uid()};obj.name=$('#sName').value.trim();obj.price=Number($('#sPrice').value);obj.duration=Number($('#sDuration').value);if(!s)state.services.push(obj);log(s?'Serviço atualizado':'Serviço cadastrado',`${obj.name} • ${money(obj.price)}`,'Administração');await save();modal.close();renderServices()}}
 
   function renderLogs(){view.innerHTML=`<div class="section-title"><h2>Histórico de alterações</h2></div><div class="table-wrap card"><table class="table"><thead><tr><th>Data</th><th>Quem</th><th>Ação</th><th>Detalhes</th></tr></thead><tbody>${[...state.logs].reverse().map(l=>`<tr><td>${new Date(l.at).toLocaleString('pt-BR')}</td><td>${esc(l.actor)}</td><td>${esc(l.action)}</td><td>${esc(l.details||'')}</td></tr>`).join('')||'<tr><td colspan="4">Sem registros.</td></tr>'}</tbody></table></div><div class="actions" style="margin-top:14px"><button class="btn ghost" id="backAdmin">← Administração</button></div>`;$('#backAdmin').onclick=renderAdmin}
 
-  function renderBackup(){view.innerHTML=`<div class="section-title"><h2>Backup e sincronização</h2></div><div class="card"><h3>Backup local</h3><p class="muted">Baixe um arquivo de segurança com todos os dados deste aparelho.</p><div class="actions"><button class="btn primary" id="exportBtn">Exportar backup</button><label class="btn ghost" style="display:inline-flex;align-items:center">Importar backup<input id="importFile" type="file" accept="application/json" hidden></label></div></div><div class="card" style="margin-top:12px"><h3>Google Drive</h3><p class="muted">Esta versão está preparada para integração, mas a conexão real exige OAuth/credenciais do projeto Google. Não colocamos chaves fixas no PWA por segurança.</p><p><strong>Status:</strong> ${state.settings.driveConnected?'Preparado/ativado manualmente':'Não configurado'}</p><button class="btn secondary" id="drivePrep">Marcar integração preparada</button></div><div class="card" style="margin-top:12px"><h3>E-mail</h3><p class="muted">O recomendado é enviar apenas um aviso de backup concluído, mantendo o arquivo completo no Drive ou em local seguro.</p><button class="btn ghost" id="emailDraft">Criar aviso por e-mail</button></div><div class="actions" style="margin-top:14px"><button class="btn ghost" id="backAdmin">← Administração</button></div>`;
-    $('#exportBtn').onclick=exportBackup;$('#importFile').onchange=importBackup;$('#drivePrep').onclick=async()=>{state.settings.driveConnected=true;log('Integração com Drive marcada como preparada','Ainda exige configuração OAuth real','Administração');await save();renderBackup()};$('#emailDraft').onclick=()=>{const subject=encodeURIComponent('Backup Yolanda Massoterapeuta concluído');const body=encodeURIComponent(`Backup concluído em ${new Date().toLocaleString('pt-BR')}\nClientes: ${state.clients.length}\nAtendimentos: ${state.appointments.length}\n\nArquivo completo mantido no local de backup configurado.`);location.href=`mailto:?subject=${subject}&body=${body}`};$('#backAdmin').onclick=renderAdmin}
+  function isDriveConfigured(){
+    const s=state?.settings||{};
+    return Boolean(s.driveConnected && s.driveEndpoint && s.driveBackupKey);
+  }
+  function normalizeDriveEndpoint(value){
+    const v=String(value||'').trim();
+    if(!v)return '';
+    try{
+      const u=new URL(v);
+      if(u.protocol!=='https:' || u.hostname!=='script.google.com' || !u.pathname.includes('/macros/s/') || !u.pathname.endsWith('/exec'))return '';
+      return u.toString().replace(/\/$/,'');
+    }catch{return ''}
+  }
+  function buildCloudBackupPackage(){
+    return {
+      version:2,
+      exportedAt:new Date().toISOString(),
+      source:'Yolanda Massoterapeuta PWA',
+      data:{
+        settings:{reminderDays:Number(state.settings.reminderDays||1)},
+        services:structuredClone(state.services),
+        clients:structuredClone(state.clients),
+        appointments:structuredClone(state.appointments),
+        logs:structuredClone(state.logs)
+      }
+    };
+  }
+  function driveStatusText(){
+    const s=state.settings;
+    if(!isDriveConfigured())return 'Não configurado';
+    if(driveBackupInProgress)return 'Enviando agora…';
+    if(s.driveBackupPending&&!navigator.onLine)return 'Aguardando internet';
+    if(s.driveBackupPending)return 'Backup pendente';
+    if(s.driveLastStatus==='error')return `Erro: ${s.driveLastError||'não foi possível confirmar o backup'}`;
+    if(s.driveLastBackupAt)return `Último backup confirmado em ${new Date(s.driveLastBackupAt).toLocaleString('pt-BR')}`;
+    return 'Configurado • aguardando primeiro backup';
+  }
+  function scheduleDriveBackup(delay=DRIVE_BACKUP_DELAY){
+    clearTimeout(driveBackupTimer);
+    if(!isDriveConfigured()||!state.settings.driveAutoBackup||!navigator.onLine)return;
+    const dailyDate=state.settings.driveDailyPendingDate||'';
+    const reason=state.settings.driveDailyPending?'Fechamento diário 23:59':'Automático';
+    driveBackupTimer=setTimeout(()=>performDriveBackup(reason,false,dailyDate),Math.max(300,delay));
+  }
+  function scheduleDailyClosingBackup(){
+    clearTimeout(driveDailyTimer);
+    if(!state||!isDriveConfigured()||state.settings.driveDailyBackup===false)return;
+    const now=new Date();
+    const target=new Date(now);
+    target.setHours(DAILY_BACKUP_HOUR,DAILY_BACKUP_MINUTE,0,0);
+    const todayKey=ymd(now);
+    if(now>=target && state.settings.driveLastDailyDate!==todayKey && !state.settings.driveDailyPending){
+      state.settings.driveDailyPending=true;
+      state.settings.driveDailyPendingDate=todayKey;
+      state.settings.driveBackupPending=true;
+      writeLocalState().then(()=>{if(navigator.onLine)scheduleDriveBackup(500)});
+    } else if(now<target && state.settings.driveBackupPending && !state.settings.driveDailyPending){
+      const yesterday=addDays(todayKey,-1);
+      if(state.settings.driveLastDailyDate!==yesterday){
+        state.settings.driveDailyPending=true;
+        state.settings.driveDailyPendingDate=yesterday;
+        writeLocalState().then(()=>{if(navigator.onLine)scheduleDriveBackup(500)});
+      }
+    }
+    if(now>=target)target.setDate(target.getDate()+1);
+    const wait=Math.max(1000,target.getTime()-Date.now());
+    driveDailyTimer=setTimeout(async()=>{
+      const due=ymd(new Date());
+      state.settings.driveDailyPending=true;
+      state.settings.driveDailyPendingDate=due;
+      state.settings.driveBackupPending=true;
+      await writeLocalState();
+      if(navigator.onLine)scheduleDriveBackup(500);
+      scheduleDailyClosingBackup();
+    },wait);
+  }
+  function jsonpDriveStatus(requestId, timeout=6500){
+    return new Promise((resolve,reject)=>{
+      const cb=`yolaDrive_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
+      const script=document.createElement('script');
+      const timer=setTimeout(()=>finish(new Error('Tempo esgotado ao confirmar o backup.')),timeout);
+      function cleanup(){clearTimeout(timer);try{delete globalThis[cb]}catch{};script.remove()}
+      function finish(err,data){cleanup();err?reject(err):resolve(data)}
+      globalThis[cb]=data=>finish(null,data);
+      script.onerror=()=>finish(new Error('Não foi possível consultar o status do backup.'));
+      const sep=state.settings.driveEndpoint.includes('?')?'&':'?';
+      script.src=`${state.settings.driveEndpoint}${sep}action=status&requestId=${encodeURIComponent(requestId)}&callback=${encodeURIComponent(cb)}&_=${Date.now()}`;
+      document.head.appendChild(script);
+    });
+  }
+  async function waitDriveStatus(requestId){
+    let last=null;
+    for(let i=0;i<10;i++){
+      try{last=await jsonpDriveStatus(requestId);if(last?.status==='ok'||last?.status==='error')return last}catch(err){last={status:'pending',message:err.message}}
+      await new Promise(r=>setTimeout(r,850));
+    }
+    throw new Error(last?.message||'O servidor não confirmou o backup a tempo.');
+  }
+  async function sendDriveRequest(action, extra={}){
+    if(!navigator.onLine)throw new Error('Sem internet.');
+    if(!isDriveConfigured())throw new Error('Configure o Google Drive primeiro.');
+    const requestId=uid().replace(/[^a-zA-Z0-9_-]/g,'');
+    const payload={action,key:state.settings.driveBackupKey,requestId,sentAt:new Date().toISOString(),...extra};
+    await fetch(state.settings.driveEndpoint,{method:'POST',mode:'no-cors',cache:'no-store',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(payload)});
+    return await waitDriveStatus(requestId);
+  }
+  async function performDriveBackup(reason='Manual', refreshView=false, dailyDate=''){
+    if(driveBackupInProgress)return false;
+    if(!isDriveConfigured()){if(refreshView)alert('Configure a conexão com o Google Drive primeiro.');return false}
+    if(!navigator.onLine){state.settings.driveBackupPending=true;state.settings.driveLastStatus='pending';state.settings.driveLastError='';await writeLocalState();if(refreshView)renderBackup();return false}
+    driveBackupInProgress=true;state.settings.driveLastStatus='sending';state.settings.driveLastError='';updateBadge();if(refreshView)renderBackup();
+    try{
+      const result=await sendDriveRequest('backup',{reason,dailyDate,backup:buildCloudBackupPackage()});
+      if(result?.status!=='ok')throw new Error(result?.message||'O servidor recusou o backup.');
+      state.settings.driveBackupPending=false;state.settings.driveLastStatus='ok';state.settings.driveLastBackupAt=result.at||new Date().toISOString();state.settings.driveLastError='';if(dailyDate){state.settings.driveLastDailyDate=dailyDate;state.settings.driveDailyPending=false;state.settings.driveDailyPendingDate=''}
+      log('Backup automático confirmado',`${reason} • Google Drive`,'Administração');
+      await writeLocalState();
+      return true;
+    }catch(err){
+      state.settings.driveBackupPending=true;state.settings.driveLastStatus='error';state.settings.driveLastError=String(err?.message||err||'Erro desconhecido').slice(0,240);
+      await writeLocalState();
+      return false;
+    }finally{driveBackupInProgress=false;updateBadge();if(refreshView)renderBackup()}
+  }
+  async function testDriveConnection(){
+    if(!isDriveConfigured()){alert('Salve primeiro a URL do Web App e a chave de backup.');return}
+    if(!navigator.onLine){alert('Conecte o aparelho à internet para testar.');return}
+    driveBackupInProgress=true;state.settings.driveLastStatus='sending';state.settings.driveLastError='';updateBadge();renderBackup();
+    try{
+      const result=await sendDriveRequest('ping');
+      if(result?.status!=='ok')throw new Error(result?.message||'A conexão não foi confirmada.');
+      state.settings.driveLastStatus='ok';state.settings.driveLastError='';state.settings.driveConnected=true;state.settings.driveBackupPending=true;
+      log('Google Drive conectado','Teste do backup automático concluído','Administração');
+      await writeLocalState();
+      alert('Conexão confirmada. O primeiro backup será enviado agora.');
+    }catch(err){state.settings.driveLastStatus='error';state.settings.driveLastError=String(err?.message||err).slice(0,240);await writeLocalState();alert(`Não foi possível confirmar a conexão.\n\n${state.settings.driveLastError}`)}
+    finally{driveBackupInProgress=false;updateBadge();renderBackup()}
+    if(state.settings.driveLastStatus==='ok')performDriveBackup('Primeiro backup',true);
+  }
+  function renderBackup(){
+    const s=state.settings;
+    view.innerHTML=`<div class="section-title"><h2>Backups</h2></div>
+      <div class="card"><h3>☁️ Google Drive automático</h3><p class="muted">Os dados reais são salvos primeiro no aparelho. Quando houver internet, alterações também são protegidas no Drive. Além disso, existe um fechamento diário programado para <strong>23:59</strong>. Se o celular estiver offline nesse horário, o fechamento fica pendente e é enviado quando a conexão voltar e o app estiver aberto.</p>
+        <div class="notice"><strong>Status:</strong> ${esc(driveStatusText())}</div>
+        <form class="form" id="driveForm" style="margin-top:12px">
+          <div class="field"><label>URL do Web App do Google Apps Script</label><input id="driveEndpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="${attr(s.driveEndpoint||'')}"><div class="help">Use a URL terminada em <strong>/exec</strong>. Ela será criada uma única vez no Google Apps Script.</div></div>
+          <div class="field"><label>Chave privada de backup</label><input id="driveKey" type="password" autocomplete="off" value="${attr(s.driveBackupKey||'')}" placeholder="Cole a chave gerada pelo script"><div class="help">A chave fica somente neste aparelho. Não coloque essa chave no GitHub.</div></div>
+          <label class="switch-line"><input id="driveAuto" type="checkbox" ${s.driveAutoBackup!==false?'checked':''}> <span>Proteger alterações automaticamente quando houver internet</span></label><label class="switch-line"><input id="driveDaily" type="checkbox" ${s.driveDailyBackup!==false?'checked':''}> <span>Fechamento diário às 23:59</span></label><div class="help">Horário fixo: 23:59 (horário do aparelho). O PWA não consegue acordar um celular totalmente fechado; se isso acontecer, o fechamento é concluído assim que o app voltar a ficar ativo com internet.</div>
+          <button class="btn primary">Salvar conexão</button>
+        </form>
+        <div class="actions" style="margin-top:12px"><button class="btn secondary" id="driveTest" ${isDriveConfigured()?'':'disabled'}>Testar conexão</button><button class="btn primary" id="driveNow" ${isDriveConfigured()?'':'disabled'}>Fazer backup agora</button><button class="btn ghost" id="driveDisconnect" ${isDriveConfigured()?'':'disabled'}>Desconectar</button></div>
+        ${s.driveLastBackupAt?`<p class="help" style="margin-top:10px">Último backup confirmado: ${new Date(s.driveLastBackupAt).toLocaleString('pt-BR')}</p>`:''}${s.driveLastDailyDate?`<p class="help">Último fechamento diário concluído: ${fmtDate(s.driveLastDailyDate)} às 23:59</p>`:''}
+      </div>
+      <div class="card" style="margin-top:12px"><h3>💾 Backup local</h3><p class="muted">Continua disponível como segunda camada de segurança. O arquivo é baixado para a pasta de Downloads do aparelho.</p><div class="actions"><button class="btn ghost" id="exportBtn">Exportar backup local</button><label class="btn ghost" style="display:inline-flex;align-items:center">Importar backup<input id="importFile" type="file" accept="application/json" hidden></label></div></div>
+      <div class="card" style="margin-top:12px"><h3>✉️ E-mail</h3><p class="muted">Crie um aviso por e-mail com a data do último backup confirmado no Drive.</p><button class="btn ghost" id="emailDraft">Criar aviso por e-mail</button></div>
+      <div class="actions" style="margin-top:14px"><button class="btn ghost" id="backAdmin">← Administração</button></div>`;
+    $('#driveForm').onsubmit=async e=>{
+      e.preventDefault();
+      const endpoint=normalizeDriveEndpoint($('#driveEndpoint').value), key=$('#driveKey').value.trim(), auto=$('#driveAuto').checked, daily=$('#driveDaily').checked;
+      if(!endpoint){alert('Informe a URL válida do Web App do Google Apps Script, terminada em /exec.');return}
+      if(key.length<24){alert('A chave de backup parece curta. Use a chave gerada pelo script.');return}
+      const changed=endpoint!==state.settings.driveEndpoint||key!==state.settings.driveBackupKey;
+      state.settings.driveEndpoint=endpoint;state.settings.driveBackupKey=key;state.settings.driveAutoBackup=auto;state.settings.driveDailyBackup=daily;state.settings.driveDailyTime='23:59';state.settings.driveConnected=true;
+      if(changed){state.settings.driveLastStatus='not_configured';state.settings.driveLastError='';state.settings.driveLastBackupAt=null}
+      state.settings.driveBackupPending=true;
+      log('Configuração de backup atualizada',`${auto?'Proteção após alterações ativada':'Proteção após alterações desativada'} • ${daily?'fechamento diário 23:59 ativado':'fechamento diário desativado'}`,'Administração');
+      await save({skipAutoBackup:true});
+      alert('Conexão salva. Agora use “Testar conexão”.');scheduleDailyClosingBackup();renderBackup();
+    };
+    $('#driveTest').onclick=testDriveConnection;
+    $('#driveNow').onclick=()=>performDriveBackup('Solicitado manualmente',true);
+    $('#driveDisconnect').onclick=async()=>{if(!confirm('Desconectar o Google Drive deste aparelho? Os dados locais serão mantidos.'))return;clearTimeout(driveBackupTimer);clearTimeout(driveDailyTimer);state.settings.driveConnected=false;state.settings.driveEndpoint='';state.settings.driveBackupKey='';state.settings.driveBackupPending=false;state.settings.driveDailyPending=false;state.settings.driveDailyPendingDate='';state.settings.driveLastStatus='not_configured';state.settings.driveLastError='';log('Google Drive desconectado','Dados locais preservados','Administração');await save({skipAutoBackup:true});renderBackup()};
+    $('#exportBtn').onclick=exportBackup;$('#importFile').onchange=importBackup;
+    $('#emailDraft').onclick=()=>{const when=state.settings.driveLastBackupAt?new Date(state.settings.driveLastBackupAt).toLocaleString('pt-BR'):'ainda não confirmado';const subject=encodeURIComponent('Backup Yolanda Massoterapeuta');const body=encodeURIComponent(`Status do backup automático\n\nÚltimo backup confirmado: ${when}\nClientes: ${state.clients.length}\nAtendimentos: ${state.appointments.length}\n\nOs arquivos automáticos ficam na pasta Yolanda Massoterapeuta / Backups Automáticos no Google Drive.`);location.href=`mailto:?subject=${subject}&body=${body}`};
+    $('#backAdmin').onclick=renderAdmin;
+  }
+
   function exportBackup(){const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:state},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`yolanda-backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href);state.settings.lastBackup=new Date().toISOString();log('Backup exportado',a.download,'Administração');save()}
   async function importBackup(e){const f=e.target.files?.[0];if(!f)return;if(!confirm('Importar este backup substituirá os dados atuais deste aparelho. Continuar?'))return;try{const obj=JSON.parse(await f.text());if(!obj.data?.settings||!Array.isArray(obj.data.services))throw new Error('Formato inválido');state=obj.data;log('Backup importado',f.name,'Administração');await save();alert('Backup importado com sucesso.');renderBackup()}catch(err){alert('Não foi possível importar este arquivo.')};e.target.value=''}
 
@@ -309,5 +503,5 @@ Não compartilhe esta chave.`);location.href=`mailto:${encodeURIComponent(email)
   nav.addEventListener('click',e=>{const b=e.target.closest('button[data-nav]');if(!b)return;const n=b.dataset.nav;if(n==='home')renderHome();if(n==='agenda')renderAgenda();if(n==='new')renderNewAppointment();if(n==='clients')renderClients();if(n==='reminders')renderReminders()});
   function esc(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))} function attr(v){return esc(v)}
 
-  (async()=>{state=await load();updateBadge();renderModePicker();if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{})})();
+  (async()=>{state=await load();if(state.settings.driveConnected&&(!state.settings.driveEndpoint||!state.settings.driveBackupKey))state.settings.driveConnected=false;updateBadge();renderModePicker();if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});scheduleDailyClosingBackup();if(state.settings.driveBackupPending)scheduleDriveBackup(1500)})();
 })();
