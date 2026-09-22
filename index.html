@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#7a4f77" />
+  <meta name="description" content="PWA simples para agenda e atendimentos da Yolanda Massoterapeuta." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Yolanda Massoterapeuta</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="brand">Yolanda Massoterapeuta</div>
+        <div id="modeLabel" class="subtle">Escolha um modo</div>
+      </div>
+      <div id="syncBadge" class="sync-badge ok">● Local</div>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav id="bottomNav" class="bottom-nav hidden" aria-label="Navegação principal">
+      <button data-nav="home">🏠<span>Início</span></button>
+      <button data-nav="agenda">📅<span>Agenda</span></button>
+      <button data-nav="new">➕<span>Agendar</span></button>
+      <button data-nav="clients">👥<span>Clientes</span></button>
+      <button data-nav="reminders">🔔<span>Lembretes</span></button>
+    </nav>
+  </div>
+
+  <dialog id="modal" class="modal"></dialog>
+  <script src="app.js" defer></script>
+</body>
+</html>
