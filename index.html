@@ -6,17 +6,20 @@
   <meta name="theme-color" content="#7a4f77" />
   <meta name="description" content="PWA simples para agenda e atendimentos da Yolanda Massoterapeuta." />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
   <title>Yolanda Massoterapeuta</title>
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div>
-        <div class="brand">Yolanda Massoterapeuta</div>
-        <div id="modeLabel" class="subtle">Escolha um modo</div>
+      <div class="brand-wrap">
+        <img src="icons/icon-192.png" alt="Logo Yolanda" class="brand-logo">
+        <div>
+          <div class="brand">Yolanda Massoterapeuta</div>
+          <div id="modeLabel" class="subtle">Escolha um modo</div>
+        </div>
       </div>
       <div id="syncBadge" class="sync-badge ok">● Local</div>
     </header>
@@ -33,6 +36,8 @@
   </div>
 
   <dialog id="modal" class="modal"></dialog>
+  <script src="firebase-config.js"></script>
+  <script src="notifications.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
