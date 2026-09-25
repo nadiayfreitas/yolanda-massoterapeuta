@@ -54,3 +54,32 @@ button,input,select,textarea{font:inherit} button{cursor:pointer}
 .calendar-holiday{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:999px;background:#eee0ff;color:#6e2ebf;font-size:.68rem;font-weight:900;padding:0 4px}
 .holiday-mini{color:#6e2ebf!important;font-weight:800}
 .holiday-notice{margin:12px 0}
+
+
+/* v1.8 — pacotes, pagamentos e recorrência semanal */
+.booking-block{display:grid;gap:12px;border-top:1px solid var(--border);padding-top:12px}
+.package-summary{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#f7eff5;border:1px solid var(--border);border-radius:14px;padding:12px 14px}
+.package-summary span{color:var(--primary);font-weight:800}
+.session-schedule{display:grid;gap:8px}
+.session-row{display:grid;grid-template-columns:86px minmax(0,1fr) 118px;gap:8px;align-items:center;border:1px solid var(--border);background:white;border-radius:13px;padding:9px}
+.session-row>span{font-weight:800;font-size:.88rem}
+.session-row input{width:100%;min-height:44px;border:1px solid #d7cbd3;border-radius:10px;padding:9px;background:white}
+.package-detail{background:#faf7f9;border:1px solid var(--border);border-radius:14px;padding:12px;margin:10px 0}
+.package-detail p{margin:5px 0}.package-detail summary{cursor:pointer;font-weight:800;color:var(--primary);padding:8px 0}
+.package-dates{display:grid;gap:6px;margin-top:6px}.package-date{display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;padding:8px;border-radius:10px;background:white;border:1px solid var(--border)}.package-date.current{border-color:var(--primary);background:#f4eaf0}.package-date span{font-size:.75rem;font-weight:800;color:var(--primary)}.package-date small{color:var(--muted)}
+@media(max-width:640px){.session-row{grid-template-columns:1fr 1fr}.session-row>span{grid-column:1/-1}.package-date{grid-template-columns:42px 1fr}.package-date small{grid-column:2}.package-summary{align-items:flex-start;flex-direction:column}}
+
+/* v2.0 — operação diária simplificada, conflitos, pacotes, presença e lista de espera */
+.home-dashboard{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dashboard-card{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;background:white;border:1px solid var(--border);border-radius:18px;padding:15px;min-height:132px;box-shadow:var(--shadow);color:var(--text)}
+.dashboard-card>span{font-size:1.55rem}.dashboard-card small{color:var(--muted);font-weight:750}.dashboard-card strong{font-size:1.04rem;line-height:1.25}.dashboard-card em{font-style:normal;color:var(--muted);font-size:.78rem;line-height:1.3}
+.link-button{border:0;background:transparent;color:var(--primary);font-weight:850;padding:0;text-decoration:underline}
+.calendar-lock{font-size:.68rem;line-height:1}.calendar-day.has-block,.week-day.has-block{border-style:dashed}
+.agenda-search{padding:12px;margin-bottom:12px}.search-results{margin:8px 0 12px}.search-result{width:100%;border:0;background:white;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;text-align:left;color:var(--text)}.search-result:last-child{border-bottom:0}.search-result span:first-child{display:grid;gap:3px}.search-result small{color:var(--muted)}
+.block-list{margin-bottom:10px}.block-item{border-style:dashed;background:#fffaf1}
+.quick-agenda summary{cursor:pointer;min-height:44px;display:flex;align-items:center}.quick-slot-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:12px}.quick-slot{border:1px solid var(--border);border-radius:12px;background:white;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--text)}.quick-slot strong{font-size:.92rem}.quick-slot small{font-size:.67rem;color:var(--ok);font-weight:750}.quick-slot.busy{background:#f3eff1;color:var(--muted)}.quick-slot.busy small{color:var(--muted)}
+.package-progress{display:grid;gap:7px;margin:10px 0}.package-progress-head{display:flex;justify-content:space-between;gap:10px;font-size:.86rem}.package-progress-head span{color:var(--muted)}.package-progress small{color:var(--muted)}.package-alert{border-left-color:var(--warn);background:#fff7e8}
+.attendance-notice{margin:10px 0}.history-button{width:100%;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;text-align:left;color:var(--text);cursor:pointer}.history-button>div{min-width:0}.history-button h3{margin-top:0}.package-client-card .btn{margin-top:8px}
+.receivable-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.receivable-summary .card{display:grid;gap:5px;box-shadow:none}.receivable-summary small{color:var(--muted)}.receivable-summary strong{font-size:1.12rem}
+@media(max-width:640px){.home-dashboard{grid-template-columns:1fr 1fr}.dashboard-card{min-height:118px;padding:13px}.quick-slot-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.receivable-summary{grid-template-columns:1fr}.section-title{align-items:flex-start;gap:8px}.section-title>.actions{justify-content:flex-end}.package-progress-head{flex-direction:column;gap:2px}}
+@media(max-width:380px){.home-dashboard{grid-template-columns:1fr}.quick-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

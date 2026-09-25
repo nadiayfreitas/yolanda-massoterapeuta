@@ -1,4 +1,4 @@
-const CACHE='yolanda-pwa-v1.7';
+const CACHE='yolanda-pwa-v2.0';
 const ASSETS=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest','./firebase-config.js','./notifications.js','./icons/icon-192.png','./icons/icon-512.png'];
 
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
