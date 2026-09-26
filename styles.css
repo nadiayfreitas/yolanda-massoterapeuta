@@ -83,3 +83,9 @@ button,input,select,textarea{font:inherit} button{cursor:pointer}
 .receivable-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.receivable-summary .card{display:grid;gap:5px;box-shadow:none}.receivable-summary small{color:var(--muted)}.receivable-summary strong{font-size:1.12rem}
 @media(max-width:640px){.home-dashboard{grid-template-columns:1fr 1fr}.dashboard-card{min-height:118px;padding:13px}.quick-slot-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.receivable-summary{grid-template-columns:1fr}.section-title{align-items:flex-start;gap:8px}.section-title>.actions{justify-content:flex-end}.package-progress-head{flex-direction:column;gap:2px}}
 @media(max-width:380px){.home-dashboard{grid-template-columns:1fr}.quick-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* v2.1 — cadastro rápido de cliente durante o agendamento */
+.client-inline-picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:stretch}
+.client-inline-picker .btn{white-space:nowrap}
+@media(max-width:520px){.client-inline-picker{grid-template-columns:1fr}.client-inline-picker .btn{width:100%}}

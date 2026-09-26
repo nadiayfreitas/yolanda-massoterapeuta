@@ -414,9 +414,9 @@
   function renderNewAppointment(initialDate=agendaSelectedDate||today(),initialTime='14:00',preset={}){
     if(typeof initialDate!=='string')initialDate=agendaSelectedDate||today();if(typeof initialTime!=='string')initialTime='14:00';preset=preset&&typeof preset==='object'?preset:{};
     activeScreen='newAppointment';const d=currentData();
-    if(!d.clients.length){view.innerHTML=`${learnGuide('new')}<div class="card"><h2>Primeiro cadastre um cliente</h2><p class="muted">O agendamento precisa estar ligado a um cliente.</p><button class="btn primary" id="goClient">Cadastrar cliente</button></div>`;$('#goClient').onclick=()=>renderClientForm();bindLearnGuide();return}
+    const clientOptions=d.clients.length?d.clients.map(c=>`<option value="${c.id}" ${preset.clientId===c.id?'selected':''}>${esc(c.name)}</option>`).join(''):'<option value="" selected disabled>Nenhuma cliente cadastrada</option>';
     view.innerHTML=`${learnGuide('new')}<div class="section-title"><h2>Novo agendamento</h2></div><form class="form card" id="apptForm">
-      <div class="field"><label>Cliente</label><select id="clientId" required>${d.clients.map(c=>`<option value="${c.id}" ${preset.clientId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Cliente</label><div class="client-inline-picker"><select id="clientId" required>${clientOptions}</select><button type="button" class="btn secondary" id="newClientDuringBooking">+ Nova cliente</button></div><div class="help">Se a cliente ainda não estiver cadastrada, crie o cadastro aqui sem sair do agendamento.</div></div>
       <div class="field"><label>Serviço</label><select id="serviceId" required>${d.services.map(s=>`<option value="${s.id}" ${preset.serviceId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Tipo</label><select id="bookingType"><option value="single">Sessão única</option><option value="package">Pacote de sessões</option></select></div>
       <div class="field"><label id="totalValueLabel">Valor total da sessão</label><input id="totalValue" inputmode="decimal" type="number" step="0.01" min="0" required><div class="help" id="totalValueHelp">Este é o valor total combinado para esta sessão.</div></div>
@@ -424,6 +424,7 @@
       <section id="packageBlock" class="booking-block hidden"><div class="package-summary"><strong>Pacote</strong><span id="packageUnitPreview">Valor por sessão: ${money(0)}</span></div><div class="field"><label>Quantidade de sessões</label><input id="packageCount" type="number" min="2" max="52" value="5"></div><label class="switch-line"><input id="packageWeekly" type="checkbox" checked> Preencher todas as sessões semanalmente no mesmo dia e horário</label><div class="help">Você pode desmarcar e escolher datas/horários diferentes em cada sessão.</div><div id="packageSchedule" class="session-schedule"></div><div class="field"><label>Como será o pagamento?</label><select id="packagePaymentPlan"><option value="total">Valor total do pacote</option><option value="per_session">Pagamento por sessão</option></select></div><div class="field"><label>Situação do pagamento agora</label><select id="packagePaymentStatus"><option value="pending">Ainda não pago</option><option value="paid">Já pago</option></select></div><div class="field hidden" id="packagePaymentMethodWrap"><label>Forma de pagamento</label><select id="packagePaymentMethod"><option>PIX</option><option>Dinheiro</option><option>Cartão</option><option>Outro</option></select><div class="help" id="packagePaymentHelp">O valor total do pacote será registrado como recebido.</div></div></section>
       <div class="field"><label>Observação (opcional)</label><textarea id="notes" placeholder="Ex.: prefere pressão leve">${esc(preset.notes||'')}</textarea></div><div class="notice">⏱️ O sistema verifica automaticamente conflitos usando a duração do serviço + ${Number(d.settings.appointmentGapMinutes||0)} min de intervalo entre clientes.</div><button class="btn primary block">Salvar agendamento</button></form>`;
     const serviceSel=$('#serviceId'),totalValue=$('#totalValue'),bookingType=$('#bookingType');
+    $('#newClientDuringBooking').onclick=()=>quickClientDuringAppointmentModal(d,$('#clientId'));
     const fillServicePrice=()=>{const s=d.services.find(x=>x.id===serviceSel.value);if(s&&!totalValue.dataset.edited)totalValue.value=preset.totalValue!=null?preset.totalValue:(s.price??0);updatePackagePreview()};totalValue.addEventListener('input',()=>{totalValue.dataset.edited='1';updatePackagePreview()});serviceSel.onchange=()=>{delete totalValue.dataset.edited;preset.totalValue=null;fillServicePrice()};
     const togglePaymentMethod=(statusSel,wrap)=>wrap.classList.toggle('hidden',statusSel.value!=='paid');$('#singlePaymentStatus').onchange=()=>togglePaymentMethod($('#singlePaymentStatus'),$('#singlePaymentMethodWrap'));$('#packagePaymentStatus').onchange=()=>togglePaymentMethod($('#packagePaymentStatus'),$('#packagePaymentMethodWrap'));$('#packagePaymentPlan').onchange=()=>{const per=$('#packagePaymentPlan').value==='per_session';$('#packagePaymentHelp').textContent=per?'O pagamento informado agora será aplicado à primeira sessão. As demais ficarão a receber.':'O valor total do pacote será registrado como recebido.'};$('#repeatWeekly').onchange=()=>$('#repeatCountWrap').classList.toggle('hidden',!$('#repeatWeekly').checked);
     function currentPackageRows(){return [...document.querySelectorAll('.session-row')].map(r=>({date:r.querySelector('[data-session-date]')?.value||'',time:r.querySelector('[data-session-time]')?.value||''}))}
@@ -439,6 +440,30 @@
       }
       if(preset.waitlistId){const w=d.waitlist.find(x=>x.id===preset.waitlistId);if(w){w.status='booked';w.bookedAt=new Date().toISOString();touchRecord(w);log('Lista de espera atendida',d.clients.find(c=>c.id===w.clientId)?.name||'Cliente')}}await persistCurrent();renderAgenda();
     };bindLearnGuide();
+  }
+
+  function quickClientDuringAppointmentModal(d,selectEl){
+    modal.innerHTML=`<form class="modal-body" id="quickClientForm"><h3>+ Cadastrar nova cliente</h3><p class="help">O cadastro será salvo e a nova cliente ficará selecionada neste agendamento.</p><div class="field"><label>Nome</label><input id="qcName" required autocomplete="name"></div><div class="field"><label>Telefone</label><input id="qcPhone" inputmode="tel" autocomplete="tel" placeholder="(16) 99999-9999"></div><div class="field"><label>Aniversário (opcional)</label><input id="qcBirth" type="date"></div><div class="field"><label>Preferências / observações (opcional)</label><textarea id="qcNotes" placeholder="Ex.: prefere pressão leve"></textarea></div><div class="actions"><button type="button" class="btn ghost" id="quickClientCancel">Cancelar</button><button class="btn primary">Salvar e usar no agendamento</button></div></form>`;
+    modal.showModal();
+    $('#quickClientCancel').onclick=()=>modal.close();
+    $('#quickClientForm').onsubmit=async e=>{
+      e.preventDefault();
+      const name=$('#qcName').value.trim(),phone=$('#qcPhone').value.trim(),birth=$('#qcBirth').value,notes=$('#qcNotes').value.trim();
+      if(!name){alert('Informe o nome da cliente.');return}
+      const normalizedName=normalizeSearch(name),phoneDigits=phone.replace(/\D/g,'');
+      const possible=d.clients.find(c=>normalizeSearch(c.name)===normalizedName||(phoneDigits.length>=8&&String(c.phone||'').replace(/\D/g,'')===phoneDigits));
+      if(possible){
+        const useExisting=confirm(`Já existe um cadastro parecido: ${possible.name}${possible.phone?` • ${possible.phone}`:''}.\n\nToque em OK para usar esse cadastro existente. Toque em Cancelar somente se realmente quiser criar outro cadastro.`);
+        if(useExisting){
+          if(![...selectEl.options].some(o=>o.value===possible.id)){const opt=document.createElement('option');opt.value=possible.id;opt.textContent=possible.name;selectEl.appendChild(opt)}
+          selectEl.value=possible.id;modal.close();return;
+        }
+      }
+      const obj={id:uid(),name,phone,birth,notes,createdAt:new Date().toISOString()};touchRecord(obj);d.clients.push(obj);log('Cliente cadastrado durante agendamento',obj.name);await persistCurrent();
+      const empty=[...selectEl.options].find(o=>!o.value);if(empty)empty.remove();
+      const opt=document.createElement('option');opt.value=obj.id;opt.textContent=obj.name;opt.selected=true;selectEl.appendChild(opt);selectEl.value=obj.id;
+      modal.close();
+    };
   }
 
   function packageAppointments(d,a){return a?.packageId?d.appointments.filter(x=>x.packageId===a.packageId&&activeAppointment(x)).sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time)):[]}

@@ -1,4 +1,4 @@
-# Yolanda Massoterapeuta — PWA v2.0
+# Yolanda Massoterapeuta — PWA v2.1
 
 Aplicativo instalável para celular, tablet e computador, com funcionamento offline, sincronização entre aparelhos, backup automático no Google Drive e notificações push de agenda/confirmação.
 
@@ -7,6 +7,15 @@ Aplicativo instalável para celular, tablet e computador, com funcionamento offl
 - **Modo Aprender:** dados fictícios e treinamento sem alterar a agenda real.
 - **Agenda de Atendimentos:** uso diário simplificado pela massoterapeuta.
 - **Administração:** configurações, preços, notificações, sincronização, backup e acompanhamento.
+
+
+## Novidade da v2.1
+
+- cadastro rápido de uma nova cliente diretamente dentro de **Novo agendamento**;
+- o formulário de agendamento permanece preenchido enquanto o cadastro rápido é aberto;
+- ao salvar, a nova cliente é selecionada automaticamente no agendamento;
+- verificação simples de possível cadastro duplicado por nome ou telefone;
+- funciona também no Modo Aprender, sem misturar dados fictícios com os reais.
 
 ## Novidades consolidadas da v2.0
 

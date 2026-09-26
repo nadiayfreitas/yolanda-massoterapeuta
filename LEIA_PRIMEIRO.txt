@@ -1,0 +1,20 @@
+YOLANDA MASSOTERAPEUTA — ATUALIZAÇÃO v2.1
+
+Atualização incremental para quem já está na v2.0.
+
+No GitHub, substitua somente:
+- app.js
+- styles.css
+- sw.js
+- README.md
+
+Não altere o Google Apps Script, Firebase, URL /exec, BACKUP_KEY ou configuração de notificações.
+
+Depois do Commit:
+1. aguarde o GitHub Pages publicar;
+2. abra o link do PWA com internet;
+3. atualize a página;
+4. feche totalmente o app instalado;
+5. abra novamente pelo ícone.
+
+A atualização preserva a base local e a sincronização já configurada.
